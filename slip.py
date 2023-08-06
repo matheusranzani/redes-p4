@@ -51,7 +51,16 @@ class Enlace:
         # TODO: Preencha aqui com o código para enviar o datagrama pela linha
         # serial, fazendo corretamente a delimitação de quadros e o escape de
         # sequências especiais, de acordo com o protocolo CamadaEnlace (RFC 1055).
-        pass
+
+        # Substitui os bytes especiais no datagrama
+        datagrama = datagrama.replace(b'\xDB', b'\xDB\xDD')
+        datagrama = datagrama.replace(b'\xC0', b'\xDB\xDC')
+
+        # Adiciona o byte de início do datagrama
+        datagrama = b'\xC0' + datagrama + b'\xC0'
+
+        # Envia o datagrama encapsulado pela linha serial
+        self.linha_serial.enviar(datagrama)
 
     def __raw_recv(self, dados):
         # TODO: Preencha aqui com o código para receber dados da linha serial.
@@ -61,4 +70,21 @@ class Enlace:
         # vir quebrado de várias formas diferentes - por exemplo, podem vir
         # apenas pedaços de um quadro, ou um pedaço de quadro seguido de um
         # pedaço de outro, ou vários quadros de uma vez só.
-        pass
+
+        # Encontra o início e o fim do datagrama
+        inicio = dados.find(b'\xC0')
+        fim = dados.rfind(b'\xC0')
+
+        # Se o início ou o fim não forem encontrados descarta os dados
+        if inicio == -1 or fim == -1:
+            return
+
+        # Extrai o datagrama encapsulado
+        datagrama_encapsulado = dados[inicio + 1:fim]
+
+        # Reverte as substituições dos bytes especiais
+        datagrama = datagrama_encapsulado.replace(b'\xDB\xDC', b'\xC0')
+        datagrama = datagrama.replace(b'\xDB\xDD', b'\xDB')
+
+        # Repassa o datagrama desencapsulado para a camada superior
+        self.callback(datagrama)
