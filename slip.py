@@ -63,26 +63,33 @@ class Enlace:
     def __raw_recv(self, dados):
         # Processa os dados recebidos
         for byte in dados:
-            if self.escape:
-                if byte == 0xDC:
-                    self.buffer_quadro.append(0xC0)
-                elif byte == 0xDD:
-                    self.buffer_quadro.append(0xDB)
-                else:
-                    # Byte de escape inválido, descarta e reinicia
+            try:
+                if self.escape:
+                    if byte == 0xDC:
+                        self.buffer_quadro.append(0xC0)
+                    elif byte == 0xDD:
+                        self.buffer_quadro.append(0xDB)
+                    else:
+                        # Byte de escape inválido, descarta e reinicia
+                        self.escape = False
+                        self.buffer_quadro.clear()
                     self.escape = False
+                elif byte == 0xC0:
+                    # Fim de quadro, processa o datagrama
+                    if self.buffer_quadro:
+                        datagrama = bytes(self.buffer_quadro)
+                        self.callback(datagrama)
                     self.buffer_quadro.clear()
+                elif byte == 0xDB:
+                    self.escape = True
+                else:
+                    self.buffer_quadro.append(byte)
+            except:
+                # Ignora exceção, mas mostra na tela
+                import traceback
+                traceback.print_exc()
                 self.escape = False
-            elif byte == 0xC0:
-                # Fim de quadro, processa o datagrama
-                if self.buffer_quadro:
-                    datagrama = bytes(self.buffer_quadro)
-                    self.callback(datagrama)
                 self.buffer_quadro.clear()
-            elif byte == 0xDB:
-                self.escape = True
-            else:
-                self.buffer_quadro.append(byte)
-
-        # Descarta datagramas vazios da fila
-        self.linha_serial.fila = self.linha_serial.fila.replace(b'\xC0\xC0', b'\xC0')
+            finally:
+                # Descarta datagramas vazios da fila
+                self.linha_serial.fila = self.linha_serial.fila.replace(b'\xC0\xC0', b'\xC0')
