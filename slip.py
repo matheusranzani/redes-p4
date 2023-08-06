@@ -43,15 +43,13 @@ class Enlace:
     def __init__(self, linha_serial):
         self.linha_serial = linha_serial
         self.linha_serial.registrar_recebedor(self.__raw_recv)
+        self.escape = False
+        self.buffer_quadro = bytearray()
 
     def registrar_recebedor(self, callback):
         self.callback = callback
 
     def enviar(self, datagrama):
-        # TODO: Preencha aqui com o código para enviar o datagrama pela linha
-        # serial, fazendo corretamente a delimitação de quadros e o escape de
-        # sequências especiais, de acordo com o protocolo CamadaEnlace (RFC 1055).
-
         # Substitui os bytes especiais no datagrama
         datagrama = datagrama.replace(b'\xDB', b'\xDB\xDD')
         datagrama = datagrama.replace(b'\xC0', b'\xDB\xDC')
@@ -63,28 +61,28 @@ class Enlace:
         self.linha_serial.enviar(datagrama)
 
     def __raw_recv(self, dados):
-        # TODO: Preencha aqui com o código para receber dados da linha serial.
-        # Trate corretamente as sequências de escape. Quando ler um quadro
-        # completo, repasse o datagrama contido nesse quadro para a camada
-        # superior chamando self.callback. Cuidado pois o argumento dados pode
-        # vir quebrado de várias formas diferentes - por exemplo, podem vir
-        # apenas pedaços de um quadro, ou um pedaço de quadro seguido de um
-        # pedaço de outro, ou vários quadros de uma vez só.
+        # Processa os dados recebidos
+        for byte in dados:
+            if self.escape:
+                if byte == 0xDC:
+                    self.buffer_quadro.append(0xC0)
+                elif byte == 0xDD:
+                    self.buffer_quadro.append(0xDB)
+                else:
+                    # Byte de escape inválido, descarta e reinicia
+                    self.escape = False
+                    self.buffer_quadro.clear()
+                self.escape = False
+            elif byte == 0xC0:
+                # Fim de quadro, processa o datagrama
+                if self.buffer_quadro:
+                    datagrama = bytes(self.buffer_quadro)
+                    self.callback(datagrama)
+                self.buffer_quadro.clear()
+            elif byte == 0xDB:
+                self.escape = True
+            else:
+                self.buffer_quadro.append(byte)
 
-        # Encontra o início e o fim do datagrama
-        inicio = dados.find(b'\xC0')
-        fim = dados.rfind(b'\xC0')
-
-        # Se o início ou o fim não forem encontrados descarta os dados
-        if inicio == -1 or fim == -1:
-            return
-
-        # Extrai o datagrama encapsulado
-        datagrama_encapsulado = dados[inicio + 1:fim]
-
-        # Reverte as substituições dos bytes especiais
-        datagrama = datagrama_encapsulado.replace(b'\xDB\xDC', b'\xC0')
-        datagrama = datagrama.replace(b'\xDB\xDD', b'\xDB')
-
-        # Repassa o datagrama desencapsulado para a camada superior
-        self.callback(datagrama)
+        # Descarta datagramas vazios da fila
+        self.linha_serial.fila = self.linha_serial.fila.replace(b'\xC0\xC0', b'\xC0')
